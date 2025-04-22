@@ -1,6 +1,6 @@
 # Zenith Audio
 
-Zenith Audio is a lightweight audio library I developed, initially built on top of [OpenAL Soft](https://openal-soft.org/). As this is my first attempy at audio library development, it was an interesting challenge to build something from the ground up.
+Zenith Audio is a lightweight audio library I developed, initially built on top of [OpenAL Soft](https://openal-soft.org/). As this is my first attempt at audio library development, it was an interesting challenge to build something from the ground up.
 
 The library is still in its early stages, so expect it to be a bit bare-bones. As I continue development, I’ll be adding more features and functionality, and I'll keep this document updated to reflect the library’s limitations and improvements.
 
