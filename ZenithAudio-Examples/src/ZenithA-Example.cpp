@@ -8,6 +8,8 @@ int main()
 {
 	Zenith::Audio::Init();
 
+	//auto audioSource = Zenith::Audio::LoadAudioSource("Resources/flacTest.flac");
+	//auto audioSource = Zenith::Audio::LoadAudioSource("Resources/mp3Test.mp3");
 	auto audioSource = Zenith::Audio::LoadAudioSource("Resources/Background_Music.wav");
 
 	if (!audioSource.loaded) {
