@@ -8,6 +8,7 @@
 
 #include "AL/al.h"
 #include "AL/alext.h"
+#include "alc/alcmain.h"
 #include "alhelpers.hpp"
 
 #define MINIMP3_IMPLEMENTATION
@@ -19,10 +20,15 @@
 
 namespace Zenith {
 
+  static ALCdevice* s_AudioDevice = nullptr;
   static mp3dec_t s_Mp3d;
 
   static uint8_t* s_AudioScratchBuffer;
   static uint32_t s_AudioScratchBufferSize = 10 * 1024 * 1024; // 10mb initially
+
+  static bool s_DebugLog = true;
+
+#define ZA_LOG(x) std::cout << "[Zenith Audio]  " << x << std::endl
 
   // Currently supported file formats
   enum class AudioFileFormat
@@ -43,6 +49,19 @@ namespace Zenith {
     return AudioFileFormat::None;
   }
 
+  static ALenum GetOpenALFormat(uint32_t channels)
+  {
+    // Note: sample size is always 2 bytes (16-bits) with
+    // both the .mp3 and .ogg decoders that we're using
+    switch (channels)
+    {
+    case 1:  return AL_FORMAT_MONO16;
+    case 2:  return AL_FORMAT_STEREO16;
+    }
+    // assert
+    return 0;
+  }
+
   AudioSource Audio::LoadAudioSourceOgg(const std::string& filename)
   {
     FILE* f = fopen(filename.c_str(), "rb");
@@ -55,16 +74,21 @@ namespace Zenith {
     vorbis_info* vi = ov_info(&vf, -1);
     auto sampleRate = vi->rate;
     auto channels = vi->channels;
+    auto alFormat = GetOpenALFormat(channels);
+
     uint64_t samples = ov_pcm_total(&vf, -1);
     float trackLength = (float)samples / (float)sampleRate; // in seconds
     uint32_t bufferSize = 2 * channels * samples; // 2 bytes per sample (I'm guessing...)
 
-    std::cout << "File Info - " << filename << ":\n";
-    std::cout << "  Channels: " << channels << std::endl;
-    std::cout << "  Sample Rate: " << sampleRate << std::endl;
-    std::cout << "  Expected size: " << bufferSize << std::endl;
+    if (s_DebugLog)
+    {
+      ZA_LOG("File Info - " << filename << ":");
+      ZA_LOG("  Channels: " << channels);
+      ZA_LOG("  Sample Rate: " << sampleRate);
+      ZA_LOG("  Expected size: " << bufferSize);
+    }
 
-    // TODO: Replace with Hazel::Buffer
+    // TODO: Replace with Zenith::Buffer
     if (s_AudioScratchBufferSize < bufferSize)
     {
       s_AudioScratchBufferSize = bufferSize;
@@ -82,7 +106,6 @@ namespace Zenith {
       bufferPtr += length;
       if (length == 0)
       {
-        /* EOF */
         eof = 1;
       }
       else if (length < 0)
@@ -92,16 +115,14 @@ namespace Zenith {
           fprintf(stderr, "Corrupt bitstream section! Exiting.\n");
           exit(1);
         }
-
-        /* some other error in the stream.  Not a problem, just reporting it in
-           case we (the app) cares.  In this case, we don't. */
       }
     }
 
     uint32_t size = bufferPtr - oggBuffer;
     // assert bufferSize == size
 
-    std::cout << "Read " << size << " bytes\n";
+    if (s_DebugLog)
+      ZA_LOG("  Read " << size << " bytes");
 
     // Release file
     ov_clear(&vf);
@@ -109,14 +130,14 @@ namespace Zenith {
 
     ALuint buffer;
     alGenBuffers(1, &buffer);
-    alBufferData(buffer, AL_FORMAT_STEREO16, oggBuffer, size, sampleRate);
+    alBufferData(buffer, alFormat, oggBuffer, size, sampleRate);
 
     AudioSource result = { buffer, true, trackLength };
     alGenSources(1, &result.m_SourceHandle);
     alSourcei(result.m_SourceHandle, AL_BUFFER, buffer);
 
     if (alGetError() != AL_NO_ERROR)
-      std::cout << "Failed to setup sound source" << std::endl;
+      ZA_LOG("Failed to setup sound source");
 
     return result;
   }
@@ -127,14 +148,29 @@ namespace Zenith {
     int loadResult = mp3dec_load(&s_Mp3d, filename.c_str(), &info, NULL, NULL);
     uint32_t size = info.samples * sizeof(mp3d_sample_t);
 
+    auto sampleRate = info.hz;
+    auto channels = info.channels;
+    auto alFormat = GetOpenALFormat(channels);
+    float lengthSeconds = size / (info.avg_bitrate_kbps * 1024.0f);
+
     ALuint buffer;
     alGenBuffers(1, &buffer);
-    alBufferData(buffer, AL_FORMAT_STEREO16, info.buffer, size, 44100);
+    alBufferData(buffer, alFormat, info.buffer, size, sampleRate);
 
-    float lengthSeconds = size / (info.avg_bitrate_kbps * 1024.0f);
     AudioSource result = { buffer, true, lengthSeconds };
     alGenSources(1, &result.m_SourceHandle);
     alSourcei(result.m_SourceHandle, AL_BUFFER, buffer);
+
+    if (s_DebugLog)
+    {
+      ZA_LOG("File Info - " << filename << ":");
+      ZA_LOG("  Channels: " << channels);
+      ZA_LOG("  Sample Rate: " << sampleRate);
+      ZA_LOG("  Size: " << size << " bytes");
+
+      auto [mins, secs] = result.GetLengthMinutesAndSeconds();
+      ZA_LOG("  Length: " << mins << "m" << secs << "s");
+    }
 
     if (alGetError() != AL_NO_ERROR)
       std::cout << "Failed to setup sound source" << std::endl;
@@ -142,12 +178,25 @@ namespace Zenith {
     return result;
   }
 
+  static void PrintAudioDeviceInfo()
+  {
+    if (s_DebugLog)
+    {
+      ZA_LOG("Audio Device Info:");
+      ZA_LOG("  Name: " << s_AudioDevice->DeviceName);
+      ZA_LOG("  Sample Rate: " << s_AudioDevice->Frequency);
+      ZA_LOG("  Max Sources: " << s_AudioDevice->SourcesMax);
+      ZA_LOG("    Mono: " << s_AudioDevice->NumMonoSources);
+      ZA_LOG("    Stereo: " << s_AudioDevice->NumStereoSources);
+    }
+  }
+
   void Audio::Init()
   {
-    if (InitAL(nullptr, 0) != 0)
-    {
+    if (InitAL(s_AudioDevice, nullptr, 0) != 0)
       std::cout << "Audio device error!\n";
-    }
+
+    PrintAudioDeviceInfo();
 
     mp3dec_init(&s_Mp3d);
 
@@ -186,6 +235,11 @@ namespace Zenith {
     // alGetSourcei(audioSource.m_SourceHandle, AL_SOURCE_STATE, &s_PlayState);
     // ALenum s_PlayState;
     // alGetSourcef(audioSource.m_SourceHandle, AL_SEC_OFFSET, &offset);
+  }
+
+  void Audio::SetDebugLogging(bool log)
+  {
+    s_DebugLog = log;
   }
 
   AudioSource::AudioSource(uint32_t handle, bool loaded, float length)

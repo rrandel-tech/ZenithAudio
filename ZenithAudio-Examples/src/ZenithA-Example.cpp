@@ -7,11 +7,10 @@ int main()
 {
 	while (true)
 	{
-		// Initialize the audio engine
 		Zenith::Audio::Init();
-		// Load audio source from file
+
 		auto source = Zenith::AudioSource::LoadFromFile("Resources/Background_Music.mp3", false);
-		// Play audio source
+		source.SetLoop(true);
 		Zenith::Audio::Play(source);
 
 		auto frontLeftSource = Zenith::AudioSource::LoadFromFile("Resources/FrontLeft.ogg", true);
