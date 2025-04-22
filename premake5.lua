@@ -8,6 +8,12 @@ workspace "ZenithAudio"
 
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
+group "Dependencies"
+	include "ZenithAudio/vendor/OpenAL-Soft"
+	include "ZenithAudio/vendor/libogg"
+	include "ZenithAudio/vendor/Vorbis"
+group ""
+
 project "ZenithAudio"
 	location "ZenithAudio"
 	kind "StaticLib"
@@ -24,12 +30,21 @@ project "ZenithAudio"
 		"%{prj.name}/src/**.cpp"
 	}
 
-	defines { "_CRT_SECURE_NO_WARNINGS" }
+	defines { "_CRT_SECURE_NO_WARNINGS", "AL_LIBTYPE_STATIC" }
 
 	includedirs
 	{
 		"%{prj.name}/src",
+		"ZenithAudio/vendor/OpenAL-Soft/include",
+		"ZenithAudio/vendor/OpenAL-Soft/src",
+		"ZenithAudio/vendor/OpenAL-Soft/src/common",
+		"ZenithAudio/vendor/libogg/include",
+		"ZenithAudio/vendor/Vorbis/include",
+		"ZenithAudio/vendor/minimp3"
 	}
+
+	links
+	{ "OpenAL-Soft", "Vorbis" }
 
 	filter "system:windows"
 		systemversion "latest"
