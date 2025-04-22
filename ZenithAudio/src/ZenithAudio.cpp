@@ -1,222 +1,75 @@
 #include "ZenithAudio.hpp"
-#include <stdio.h>
-#include <stdlib.h>
 
-#include <string>
-#include <thread>
-#include <filesystem>
+#define MINIAUDIO_IMPLEMENTATION
+#include <miniaudio.h>
 
-#include "AL/al.h"
-#include "AL/alext.h"
-#include "alc/alcmain.h"
-#include "alhelpers.hpp"
+#include <iostream>
 
-#define MINIMP3_IMPLEMENTATION
-#include "minimp3.h"
-#include "minimp3_ex.h"
-
-#include "vorbis/codec.h"
-#include "vorbis/vorbisfile.h"
-
-#include "Buffer.hpp"
+#define ZN_LOG(x) std::cout << "[Zenith Audio]  " << x << std::endl
 
 namespace Zenith {
 
-	static ALCdevice* s_AudioDevice = nullptr;
-	static mp3dec_t s_Mp3d;
+	bool Audio::s_DebugLog = true;
 
-	static bool s_DebugLog = true;
-
-#define ZA_LOG(x) std::cout << "[Zenith Audio]  " << x << std::endl
-
-	// Currently supported file formats
-	enum class AudioFileFormat
-	{
-		None = 0,
-		Ogg,
-		MP3
-	};
-
-	static AudioFileFormat GetFileFormat(const std::string& filename)
-	{
-		std::filesystem::path path = filename;
-		std::string extension = path.extension().string();
-
-		if (extension == ".ogg")  return AudioFileFormat::Ogg;
-		if (extension == ".mp3")  return AudioFileFormat::MP3;
-
-		return AudioFileFormat::None;
-	}
-
-	static ALenum GetOpenALFormat(uint32_t channels)
-	{
-		// Note: sample size is always 2 bytes (16-bits) with
-		// both the .mp3 and .ogg decoders that we're using
-		switch (channels)
-		{
-		case 1:  return AL_FORMAT_MONO16;
-		case 2:  return AL_FORMAT_STEREO16;
-		}
-		// assert
-		return 0;
-	}
-
-	AudioSource Audio::LoadAudioSourceOgg(const std::string& filename)
-	{
-		FILE* f = fopen(filename.c_str(), "rb");
-
-		OggVorbis_File vf;
-		if (ov_open_callbacks(f, &vf, NULL, 0, OV_CALLBACKS_NOCLOSE) < 0)
-			std::cout << "Could not open ogg stream\n";
-
-		// Useful info
-		vorbis_info* vi = ov_info(&vf, -1);
-		auto sampleRate = vi->rate;
-		auto channels = vi->channels;
-		auto alFormat = GetOpenALFormat(channels);
-
-		uint64_t samples = ov_pcm_total(&vf, -1);
-		float trackLength = (float)samples / (float)sampleRate; // in seconds
-		uint32_t bufferSize = 2 * channels * samples; // 2 bytes per sample (stereo)
-
-		if (s_DebugLog)
-		{
-			ZA_LOG("File Info - " << filename << ":");
-			ZA_LOG("  Channels: " << channels);
-			ZA_LOG("  Sample Rate: " << sampleRate);
-			ZA_LOG("  Expected size: " << bufferSize);
-		}
-
-		Zenith::Buffer audioBuffer(bufferSize);
-		uint8_t* oggBuffer = audioBuffer.Data();
-		uint8_t* bufferPtr = oggBuffer;
-
-		int eof = 0;
-		while (!eof)
-		{
-			int current_section;
-			long length = ov_read(&vf, (char*)bufferPtr, 4096, 0, 2, 1, &current_section);
-			bufferPtr += length;
-			if (length == 0)
-			{
-				eof = 1;
-			}
-			else if (length < 0)
-			{
-				if (length == OV_EBADLINK)
-				{
-					fprintf(stderr, "Corrupt bitstream section! Exiting.\n");
-					exit(1);
-				}
-			}
-		}
-
-		uint32_t size = bufferPtr - oggBuffer;
-
-		if (s_DebugLog)
-			ZA_LOG("  Read " << size << " bytes");
-
-		// Release file
-		ov_clear(&vf);
-		fclose(f);
-
-		ALuint buffer;
-		alGenBuffers(1, &buffer);
-		alBufferData(buffer, alFormat, oggBuffer, size, sampleRate);
-
-		AudioSource result = { buffer, true, trackLength };
-		alGenSources(1, &result.m_SourceHandle);
-		alSourcei(result.m_SourceHandle, AL_BUFFER, buffer);
-
-		if (alGetError() != AL_NO_ERROR)
-			ZA_LOG("Failed to setup sound source");
-
-		return result;
-	}
-
-	AudioSource Audio::LoadAudioSourceMP3(const std::string& filename)
-	{
-		mp3dec_file_info_t info;
-		int loadResult = mp3dec_load(&s_Mp3d, filename.c_str(), &info, NULL, NULL);
-		uint32_t size = info.samples * sizeof(mp3d_sample_t);
-
-		auto sampleRate = info.hz;
-		auto channels = info.channels;
-		auto alFormat = GetOpenALFormat(channels);
-		float lengthSeconds = size / (info.avg_bitrate_kbps * 1024.0f);
-
-		ALuint buffer;
-		alGenBuffers(1, &buffer);
-		alBufferData(buffer, alFormat, info.buffer, size, sampleRate);
-
-		AudioSource result = { buffer, true, lengthSeconds };
-		alGenSources(1, &result.m_SourceHandle);
-		alSourcei(result.m_SourceHandle, AL_BUFFER, buffer);
-
-		if (s_DebugLog)
-		{
-			ZA_LOG("File Info - " << filename << ":");
-			ZA_LOG("  Channels: " << channels);
-			ZA_LOG("  Sample Rate: " << sampleRate);
-			ZA_LOG("  Size: " << size << " bytes");
-
-			auto [mins, secs] = result.GetLengthMinutesAndSeconds();
-			ZA_LOG("  Length: " << mins << "m" << secs << "s");
-		}
-
-		if (alGetError() != AL_NO_ERROR)
-			std::cout << "Failed to setup sound source" << std::endl;
-
-		return result;
-	}
-
-	static void PrintAudioDeviceInfo()
-	{
-		if (s_DebugLog)
-		{
-			ZA_LOG("Audio Device Info:");
-			ZA_LOG("  Name: " << s_AudioDevice->DeviceName);
-			ZA_LOG("  Sample Rate: " << s_AudioDevice->Frequency);
-			ZA_LOG("  Max Sources: " << s_AudioDevice->SourcesMax);
-			ZA_LOG("    Mono: " << s_AudioDevice->NumMonoSources);
-			ZA_LOG("    Stereo: " << s_AudioDevice->NumStereoSources);
-		}
-	}
+	static ma_engine s_Engine;
+	static ma_decoder s_Decoder;
 
 	void Audio::Init()
 	{
-		if (InitAL(s_AudioDevice, nullptr, 0) != 0)
-			std::cout << "Audio device error!\n";
+		ma_result result;
 
-		PrintAudioDeviceInfo();
+		result = ma_engine_init(nullptr, &s_Engine);
+		if (result != MA_SUCCESS) {
+			std::cerr << "Failed to initialize miniaudio engine." << std::endl;
+			return;
+		}
 
-		mp3dec_init(&s_Mp3d);
-
-		// Init listener
-		ALfloat listenerPos[] = { 0.0,0.0,0.0 };
-		ALfloat listenerVel[] = { 0.0,0.0,0.0 };
-		ALfloat listenerOri[] = { 0.0,0.0,-1.0, 0.0,1.0,0.0 };
-		alListenerfv(AL_POSITION, listenerPos);
-		alListenerfv(AL_VELOCITY, listenerVel);
-		alListenerfv(AL_ORIENTATION, listenerOri);
+		if (s_DebugLog) {
+			ZN_LOG("Miniaudio engine initialized.");
+		}
 	}
 
 	AudioSource Audio::LoadAudioSource(const std::string& filename)
 	{
-		auto format = GetFileFormat(filename);
-		switch (format)
-		{
-		case AudioFileFormat::Ogg:  return LoadAudioSourceOgg(filename);
-		case AudioFileFormat::MP3:  return LoadAudioSourceMP3(filename);
+		AudioSource source;
+
+		ma_result result;
+		ma_sound* sound = new ma_sound;
+
+		result = ma_sound_init_from_file(&s_Engine, filename.c_str(), MA_SOUND_FLAG_STREAM, nullptr, nullptr, sound);
+
+		if (result != MA_SUCCESS) {
+			std::cerr << "Failed to load audio file: " << filename << " | Error code: " << result << std::endl;
+			delete sound;
+			return source;
 		}
 
-		// Loading failed or unsupported file type
-		return { 0, false, 0 };
+		source.internalData = sound;
+		source.loaded = true;
+
+		if (s_DebugLog) {
+			ZN_LOG("Streamed audio file: " << filename);
+		}
+
+		return source;
 	}
 
-	void Audio::Play(const AudioSource& audioSource)
+	void Audio::Play(AudioSource& audioSource)
 	{
-		alSourcePlay(audioSource.m_SourceHandle);
+		if (audioSource.loaded) {
+			ma_sound* sound = static_cast<ma_sound*>(audioSource.internalData);
+			ma_result result = ma_sound_start(sound);
+			if (result != MA_SUCCESS) {
+				std::cerr << "Failed to play audio." << std::endl;
+			}
+		}
+	}
+
+	bool Audio::IsPlaying(AudioSource& source)
+	{
+		if (!source.loaded) return false;
+		ma_sound* sound = static_cast<ma_sound*>(source.internalData);
+		return ma_sound_is_playing(sound);
 	}
 
 	void Audio::SetDebugLogging(bool log)
@@ -224,64 +77,16 @@ namespace Zenith {
 		s_DebugLog = log;
 	}
 
-	AudioSource::AudioSource(uint32_t handle, bool loaded, float length)
-		: m_BufferHandle(handle), m_Loaded(loaded), m_TotalDuration(length)
+	void Audio::Shutdown()
 	{
-	}
-
-	AudioSource::~AudioSource()
-	{
-		// TODO: free openal audio source?
-	}
-
-	void AudioSource::SetPosition(float x, float y, float z)
-	{
-		m_Position[0] = x;
-		m_Position[1] = y;
-		m_Position[2] = z;
-
-		alSourcefv(m_SourceHandle, AL_POSITION, m_Position);
-	}
-
-	void AudioSource::SetGain(float gain)
-	{
-		m_Gain = gain;
-
-		alSourcef(m_SourceHandle, AL_GAIN, gain);
-	}
-
-	void AudioSource::SetPitch(float pitch)
-	{
-		m_Pitch = pitch;
-
-		alSourcef(m_SourceHandle, AL_PITCH, pitch);
-	}
-
-	void AudioSource::SetSpatial(bool spatial)
-	{
-		m_Spatial = spatial;
-
-		alSourcei(m_SourceHandle, AL_SOURCE_SPATIALIZE_SOFT, spatial ? AL_TRUE : AL_FALSE);
-		alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
-	}
-
-	void AudioSource::SetLoop(bool loop)
-	{
-		m_Loop = loop;
-
-		alSourcei(m_SourceHandle, AL_LOOPING, loop ? AL_TRUE : AL_FALSE);
+		ma_engine_uninit(&s_Engine);
+		ZN_LOG("Miniaudio engine shut down.");
 	}
 
 	std::pair<uint32_t, uint32_t> AudioSource::GetLengthMinutesAndSeconds() const
 	{
-		return { (uint32_t)(m_TotalDuration / 60.0f), (uint32_t)m_TotalDuration % 60 };
+		uint32_t mins = static_cast<uint32_t>(length / 60);
+		uint32_t secs = static_cast<uint32_t>(length) % 60;
+		return { mins, secs };
 	}
-
-	AudioSource AudioSource::LoadFromFile(const std::string& file, bool spatial)
-	{
-		AudioSource result = Audio::LoadAudioSource(file);
-		result.SetSpatial(spatial);
-		return result;
-	}
-
 }

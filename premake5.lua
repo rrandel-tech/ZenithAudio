@@ -9,9 +9,9 @@ workspace "ZenithAudio"
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 group "Dependencies"
-	include "ZenithAudio/vendor/OpenAL-Soft"
-	include "ZenithAudio/vendor/libogg"
-	include "ZenithAudio/vendor/Vorbis"
+include "ZenithAudio/vendor/OpenAL-Soft"
+include "ZenithAudio/vendor/libogg"
+include "ZenithAudio/vendor/Vorbis"
 group ""
 
 project "ZenithAudio"
@@ -40,7 +40,8 @@ project "ZenithAudio"
 		"ZenithAudio/vendor/OpenAL-Soft/src/common",
 		"ZenithAudio/vendor/libogg/include",
 		"ZenithAudio/vendor/Vorbis/include",
-		"ZenithAudio/vendor/minimp3"
+		"ZenithAudio/vendor/minimp3",
+		"ZenithAudio/vendor/miniaudio/include",
 	}
 
 	links

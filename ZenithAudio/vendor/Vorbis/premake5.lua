@@ -6,28 +6,19 @@ project "Vorbis"
 	targetdir ("bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
 
-	includedirs
-	{
-		"include",
-		"../libogg/include"
-	}
+	includedirs { "include", "../libogg/include" }
 
-	files
-	{
-		"include/**.h",
-		"lib/**.h",
-		"lib/**.c"
-	}
+	files { "include/**.h", "lib/**.h", "lib/**.c" }
 
-	links
-	{
-		"libogg"
-	}
+	links { "libogg" }
 
-	defines
-	{
-		"LIBOGG_EXPORTS"
-	}
+	defines { "LIBOGG_EXPORTS" }
+
+	filter { "files:**.c" }
+	warnings "Off"
+	filter { "files:**.cpp" }
+	warnings "Off"
+	filter {}
 	
 	filter "system:windows"
 		systemversion "latest"
@@ -40,11 +31,7 @@ project "Vorbis"
 			"lib/tone.c"
 		}
 
-		defines
-		{
-			"WIN32",
-			"NDEBUG"
-		}
+		defines { "WIN32", "NDEBUG" }
 
 	filter "configurations:Debug"
 		runtime "Debug"

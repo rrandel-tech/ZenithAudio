@@ -16,21 +16,17 @@ project "OpenAL-Soft"
 		"include/AL"
 	}
 
-	files
-	{
-		"src/**.h",
-		"src/**.cpp"
-	}
+	files{ "src/**.h", "src/**.cpp" }
 
-	excludes
-	{
-		"src/alc/mixer/mixer_neon.cpp"
-	}
+	excludes { "src/alc/mixer/mixer_neon.cpp" }
 
-	defines
-	{
-		"AL_LIBTYPE_STATIC"
-	}
+	defines { "AL_LIBTYPE_STATIC" }
+
+	filter { "files:**.c" }
+	warnings "Off"
+	filter { "files:**.cpp" }
+	warnings "Off"
+	filter {}
 	
 	filter "system:windows"
 		systemversion "latest"
@@ -49,10 +45,7 @@ project "OpenAL-Soft"
 			"OpenAL_EXPORTS"
 		}
 
-		links
-		{
-			"winmm"
-		}
+		links { "winmm" }
 
 	filter "configurations:Debug"
 		runtime "Debug"
