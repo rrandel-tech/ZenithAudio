@@ -6,31 +6,26 @@
 
 namespace Zenith {
 
-	struct AudioSource
-	{
-		void* internalData;
-		bool loaded;
-		float length;
+	struct AudioSourceInternal;
 
-		AudioSource() : internalData(nullptr), loaded(false), length(0) {}
+	struct AudioSource {
+		AudioSourceInternal* data = nullptr;
+		bool loaded = false;
 
 		std::pair<uint32_t, uint32_t> GetLengthMinutesAndSeconds() const;
-
-		friend class Audio;
 	};
 
-	class Audio
-	{
+	class Audio {
 	public:
 		static void Init();
 		static void Shutdown();
 
-		static AudioSource LoadAudioSource(const std::string& filename);
-
-		static void Play(AudioSource& audioSource);
+		static AudioSource LoadAudioSource(const std::string& filepath);
 		static bool IsPlaying(AudioSource& source);
+		static void Play(AudioSource& source);
+		static void Free(AudioSource& source);
 
-		static void SetDebugLogging(bool log);
+		static void SetDebugLogging(bool enable);
 
 	private:
 		static bool s_DebugLog;
