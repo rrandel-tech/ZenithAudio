@@ -22,12 +22,12 @@ For a quick demonstration of Zenith Audio in action, check out the `ZenithAudio-
 
 ## Acknowledgements
 
-- [OpenAL Soft](https://openal-soft.org/) – Audio backend for the library
-- [minimp3](https://github.com/lieff/minimp3) – MP3 decoding library
-- [libogg and Vorbis](https://www.xiph.org/) – Audio file formats
-
 - [miniaudio.h](https://github.com/mackron/miniaudio) – Audio backend for the library
 - [stb_vorbis.h](http://www.nothings.org/stb_vorbis/) – Ogg audio file loading
 - [dr_wav.h](http://github.com/mackron/dr_libs) – WAV audio file loading
 - [dr_mp3.h](https://github.com/mackron/dr_libs) – MP3 audio file loading
 - [dr_flac.h](https://github.com/mackron/dr_libs) – FLAC audio file loading
+- [jar_mod.h](https://github.com/jarikomppa/soloud/blob/master/src/audiosource/mod/jar_mod.h) – MOD module audio loading
+- [jar_xm.h](https://github.com/jarikomppa/soloud/blob/master/src/audiosource/xm/jar_xm.h) – XM module audio loading
+- [qoa.h](https://github.com/phoboslab/qoa) – Quite OK Audio codec
+- [qoaplay.c](https://github.com/phoboslab/qoa) – Reference QOA playback implementation
